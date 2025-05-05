@@ -1,64 +1,48 @@
-# Import necessary libraries
+
 import pandas as pd
-import numpy as np
-import re
-import nltk
-from textblob import Word, TextBlob
-from sklearn.model_selection import train_test_split
-from sklearn.feature_extraction.text import CountVectorizer
-from sklearn.naive_bayes import MultinomialNB
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, ConfusionMatrixDisplay
+import time
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn import svm
+from sklearn.metrics import classification_report
 
-# Download required NLTK data
-nltk.download('stopwords')
-nltk.download('punkt')
-nltk.download('wordnet')
+# Load Data
+train_url = "https://raw.githubusercontent.com/Vasistareddy/sentiment_analysis/master/data/train.csv"
+test_url = "https://raw.githubusercontent.com/Vasistareddy/sentiment_analysis/master/data/test.csv"
 
-# Load the IMDB dataset
-df = pd.read_csv("IMDB Dataset.csv")  # Ensure this file is in your working directory
+train_data = pd.read_csv(train_url)
+test_data = pd.read_csv(test_url)
 
-# Use only the review column
-df = df[['review']]
+# Optional: Shuffle train data and view a few rows
+print("Sample shuffled training data:")
+print(train_data.sample(frac=1).head(5))
 
-# Basic text preprocessing
-sw = nltk.corpus.stopwords.words('english')
-df['review'] = df['review'].apply(lambda x: " ".join(word.lower() for word in x.split()))
-df['review'] = df['review'].apply(lambda x: " ".join(word for word in x.split() if word not in sw))
-df['review'] = df['review'].apply(lambda x: " ".join([Word(word).lemmatize() for word in x.split()]))
+# TF-IDF Vectorization
+print("🔧 Vectorizing text using TF-IDF...")
+vectorizer = TfidfVectorizer(min_df=5, max_df=0.8, sublinear_tf=True, use_idf=True)
+X_train = vectorizer.fit_transform(train_data['Content'])
+X_test = vectorizer.transform(test_data['Content'])
+y_train = train_data['Label']
+y_test = test_data['Label']
 
-# Tokenization (optional, for understanding)
-df['tokens'] = df['review'].apply(lambda x: nltk.word_tokenize(x))
+# Train SVM classifier
+print("Training SVM classifier...")
+classifier = svm.SVC(kernel='linear')
 
-# Compute sentiment polarity using TextBlob
-df['polarity'] = df['review'].apply(lambda x: TextBlob(x).sentiment.polarity)
+start_train = time.time()
+classifier.fit(X_train, y_train)
+end_train = time.time()
 
-# Assign sentiment based on polarity
-df['Sentiment'] = np.where(df['polarity'] >= 0, 'Positive', 'Negative')
+# Predict
+start_pred = time.time()
+y_pred = classifier.predict(X_test)
+end_pred = time.time()
 
-# Split dataset
-X_train, X_test, y_train, y_test = train_test_split(df['review'], df['Sentiment'], test_size=0.2, random_state=42)
+# Performance Timing
+print(f"\nTraining time: {end_train - start_train:.2f} seconds")
+print(f"Prediction time: {end_pred - start_pred:.2f} seconds")
 
-# Vectorize text data
-vectorizer = CountVectorizer()
-X_train_vect = vectorizer.fit_transform(X_train)
-X_test_vect = vectorizer.transform(X_test)
-
-# Train a Naive Bayes model
-model = MultinomialNB()
-model.fit(X_train_vect, y_train)
-
-# Evaluate
-accuracy = model.score(X_test_vect, y_test)
-print(f"Model Accuracy: {accuracy * 100:.2f}%")
-print(classification_report(y_test, model.predict(X_test_vect)))
-
-# Confusion Matrix
-cm = confusion_matrix(y_test, model.predict(X_test_vect))
-disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=model.classes_)
-disp.plot()
-
-# Test the model on a new review
-new_doc = ["The college is very good"]
-new_doc_vec = vectorizer.transform(new_doc)
-prediction = model.predict(new_doc_vec)
-print(f"Predicted Sentiment: {prediction[0]}")
+# Evaluation Report
+report = classification_report(y_test, y_pred, output_dict=True)
+print("\nClassification Report:")
+print("Positive:", report.get('pos', 'N/A'))
+print("Negative:", report.get('neg', 'N/A'))
